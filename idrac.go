@@ -110,30 +110,31 @@ func (c *IDRACClient) AmperageReading() (float64, error) {
 		return 0, errors.Wrap(err, "failed to fetch amperage from idrac")
 	}
 	if body["LineInputVoltage"] == nil {
-		return 0, fmt.Errorf("failed to convert input voltage because it is nil. full response: %+v", body)
+		return 0, nil
 	}
 	inputVoltage := body["LineInputVoltage"].(float64)
 	return inputVoltage, nil
 }
 
-func (c *IDRACClient) TurnOff() error {
+func (c *IDRACClient) TurnOff() (map[string]interface{}, error) {
 	const managePowerPath = "/redfish/v1/Systems/System.Embedded.1/Actions/ComputerSystem.Reset"
 	glog.Warning("powering off server")
 	data := []byte("{\"Action\": \"Reset\", \"ResetType\": \"GracefulShutdown\"}")
-	_, err := c.post(managePowerPath, data)
+	// return map[string]interface{}{}, nil // todo remove
+	response, err := c.post(managePowerPath, data)
 	if err != nil {
-		return errors.Wrap(err, "failed to post turn off command")
+		return map[string]interface{}{}, errors.Wrap(err, "failed to post turn off command")
 	}
-	return nil
+	return response, nil
 }
 
-func (c *IDRACClient) TurnOn() error {
+func (c *IDRACClient) TurnOn() (map[string]interface{}, error) {
 	const managePowerPath = "/redfish/v1/Systems/System.Embedded.1/Actions/ComputerSystem.Reset"
 	glog.Warning("powering on server")
 	data := []byte("{\"Action\": \"Reset\", \"ResetType\": \"On\"}")
-	_, err := c.post(managePowerPath, data)
+	response, err := c.post(managePowerPath, data)
 	if err != nil {
-		return errors.Wrap(err, "failed to post turn on command")
+		return map[string]interface{}{}, errors.Wrap(err, "failed to post turn on command")
 	}
-	return nil
+	return response, nil
 }

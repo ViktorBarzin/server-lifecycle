@@ -64,6 +64,7 @@ func updateStateFile(path string, state ServerState) error {
 }
 
 func refreshState(idracClient IDRACClient) (ServerState, error) {
+	// return ServerState{On: true, Voltage: 0, LastUpdate: time.Now()}, nil // mock
 	voltage, err := idracClient.AmperageReading()
 	if err != nil {
 		return ServerState{}, errors.Wrap(err, "failed to fetch amperage reading")

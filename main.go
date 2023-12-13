@@ -86,13 +86,16 @@ func run() error {
 
 /* Handle case where power was lost while server is on. */
 func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) error {
-	turnOffThreshdold := time.Minute.Seconds() * 20 // 20 minutes
-	turnOffChannel := time.After(time.Duration(time.Now().Sub(currentState.LastUpdate).Seconds() - turnOffThreshdold))
+	turnOffThreshdold := time.Minute * 20 // 20 minutes
+	timeSinceLastCheck := time.Now().Sub(currentState.LastUpdate)
+	turnOffChannel := time.After(time.Duration(turnOffThreshdold.Nanoseconds() - timeSinceLastCheck.Nanoseconds()))
+	pollInterval := time.Minute * 200
 
 	for {
-		glog.Info("waiting timeout before rechecking system state...")
+		glog.Infof("waiting %f seconds before rechecking system state...", pollInterval.Seconds())
 		select {
-		case <-time.After(time.Minute):
+		case <-time.After(pollInterval):
+			glog.Info("rechecking system state")
 			// query again
 			// if amp restored, break
 			voltage, err := idracClient.AmperageReading()
@@ -109,12 +112,11 @@ func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) e
 			}
 		case <-turnOffChannel:
 			// turn off server
-			glog.Warning("turning of server")
-			// err := idracClient.TurnOff() // TODO: @nocommit
-			var err error
+			response, err := idracClient.TurnOff()
 			if err != nil {
 				return errors.Wrap(err, "failed to turn off server")
 			}
+			glog.Infof("received response from tuning on server: %+v", response)
 			break
 		}
 	}
@@ -123,9 +125,10 @@ func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) e
 func handlePowerOffWithVoltage(idracClient IDRACClient) error {
 	// perhaps check UPS battery and or time since power is on
 	// this will help avoid turning it on too soon (rare case now)
-	err := idracClient.TurnOn()
+	response, err := idracClient.TurnOn()
 	if err != nil {
 		return errors.Wrap(err, "error turning on server")
 	}
+	glog.Infof("received response form tuning on server: %+v", response)
 	return nil
 }
