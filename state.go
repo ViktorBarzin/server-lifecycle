@@ -18,7 +18,7 @@ type ServerState struct {
 
 func initStateFile(path string) error {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		glog.Infof("state file %s already exists, not overwriting...", path)
+		glog.Infof("state file %s already exists, reusing...", path)
 		return err
 	}
 
@@ -61,4 +61,16 @@ func updateStateFile(path string, state ServerState) error {
 		return errors.Wrapf(err, "failed to write serialized state to file")
 	}
 	return nil
+}
+
+func refreshState(idracClient IDRACClient) (ServerState, error) {
+	voltage, err := idracClient.AmperageReading()
+	if err != nil {
+		return ServerState{}, errors.Wrap(err, "failed to fetch amperage reading")
+	}
+	isPoweredOn, err := idracClient.IsPoweredOn()
+	if err != nil {
+		return ServerState{}, errors.Wrap(err, "failed to fetch voltage reading")
+	}
+	return ServerState{On: isPoweredOn, Voltage: voltage, LastUpdate: time.Now()}, nil
 }

@@ -1,11 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/golang/glog"
@@ -17,12 +18,7 @@ type IDRACClient struct {
 	cache       *LRUCache
 }
 
-func (c *IDRACClient) fetch(path string, method string) (map[string]interface{}, error) {
-	if body, exists := c.cache.Get(path); exists {
-		return body.(map[string]interface{}), nil
-	}
-	url := fmt.Sprintf("https://%s%s", c.authContext.Host, path)
-
+func (c *IDRACClient) doRequest(request *http.Request) (map[string]interface{}, error) {
 	// Set your Basic Authentication credentials
 	auth := c.authContext.Username + ":" + c.authContext.Password
 	authHeader := "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
@@ -32,12 +28,6 @@ func (c *IDRACClient) fetch(path string, method string) (map[string]interface{},
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
-	}
-
-	// Create an HTTP GET request with Basic Authentication
-	request, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return map[string]interface{}{}, errors.Wrap(err, "error creating request")
 	}
 
 	// Set the Authorization header
@@ -56,7 +46,7 @@ func (c *IDRACClient) fetch(path string, method string) (map[string]interface{},
 	}
 
 	// Read the response body
-	body, err := ioutil.ReadAll(response.Body)
+	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return map[string]interface{}{}, errors.Wrap(err, "error reading response body")
 	}
@@ -67,14 +57,44 @@ func (c *IDRACClient) fetch(path string, method string) (map[string]interface{},
 	if err != nil {
 		return map[string]interface{}{}, errors.Wrap(err, "failed json decoding body")
 	}
-	c.cache.Put(path, decodedBody)
 	return decodedBody, nil
+
+}
+
+func (c *IDRACClient) fetch(path string) (map[string]interface{}, error) {
+	if body, exists := c.cache.Get(path); exists {
+		return body.(map[string]interface{}), nil
+	}
+	url := fmt.Sprintf("https://%s%s", c.authContext.Host, path)
+	request, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return map[string]interface{}{}, errors.Wrap(err, "error creating request")
+	}
+	response, err := c.doRequest(request)
+	if err != nil {
+		return map[string]interface{}{}, errors.Wrapf(err, "failed to fetch path %s", path)
+	}
+	c.cache.Put(path, response)
+	return response, nil
+}
+
+func (c *IDRACClient) post(path string, data []byte) (map[string]interface{}, error) {
+	url := fmt.Sprintf("https://%s%s", c.authContext.Host, path)
+	request, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
+	if err != nil {
+		return map[string]interface{}{}, errors.Wrap(err, "error creating request")
+	}
+	response, err := c.doRequest(request)
+	if err != nil {
+		return map[string]interface{}{}, errors.Wrapf(err, "failed to post to path %s", path)
+	}
+	return response, nil
 }
 
 func (c *IDRACClient) IsPoweredOn() (bool, error) {
 	const poweredOnPath = "/redfish/v1/Chassis/System.Embedded.1"
 	glog.Info("fetching server power state")
-	body, err := c.fetch(poweredOnPath, "GET")
+	body, err := c.fetch(poweredOnPath)
 	if err != nil {
 		return false, err
 	}
@@ -85,10 +105,32 @@ func (c *IDRACClient) IsPoweredOn() (bool, error) {
 func (c *IDRACClient) AmperageReading() (float64, error) {
 	const amperatePath = "/redfish/v1/Chassis/System.Embedded.1/Power/PowerSupplies/PSU.Slot.2"
 	glog.Info("fetching voltage state")
-	body, err := c.fetch(amperatePath, "GET")
+	body, err := c.fetch(amperatePath)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to fetch amperage from idrac")
 	}
 	inputVoltage := body["LineInputVoltage"].(float64)
 	return inputVoltage, nil
+}
+
+func (c *IDRACClient) TurnOff() error {
+	const managePowerPath = "/redfish/v1/Systems/System.Embedded.1/Actions/ComputerSystem.Reset"
+	glog.Warning("powering off server")
+	data := []byte("{\"Action\": \"Reset\", \"ResetType\": \"GracefulShutdown\"}")
+	_, err := c.post(managePowerPath, data)
+	if err != nil {
+		return errors.Wrap(err, "failed to post turn off command")
+	}
+	return nil
+}
+
+func (c *IDRACClient) TurnOn() error {
+	const managePowerPath = "/redfish/v1/Systems/System.Embedded.1/Actions/ComputerSystem.Reset"
+	glog.Warning("powering on server")
+	data := []byte("{\"Action\": \"Reset\", \"ResetType\": \"On\"}")
+	_, err := c.post(managePowerPath, data)
+	if err != nil {
+		return errors.Wrap(err, "failed to post turn on command")
+	}
+	return nil
 }
