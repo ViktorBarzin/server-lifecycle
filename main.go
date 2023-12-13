@@ -63,7 +63,7 @@ func run() error {
 	if currentState.On && currentState.Voltage < NO_VOLTAGE_THRESHOLD {
 		// start timer and wait for voltage to come back..
 		// perhaps wait until UPS is fully charged? (some hardcoded time)
-		glog.Warningf("low voltage detected - %f! Waiting some time before turning off server")
+		glog.Warningf("low voltage detected - %f! Waiting some time before turning off server", currentState.Voltage)
 		err = handlePowerOnNoVoltage(savedState, idracClient)
 		if err != nil {
 			return errors.Wrap(err, "error handling no power while server is on")
@@ -104,6 +104,8 @@ func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) e
 			if voltage > NO_VOLTAGE_THRESHOLD {
 				glog.Infof("power is restored, current reading: %f", voltage)
 				break
+			} else {
+				glog.Infof("voltage %f is still below threshold %d", voltage, NO_VOLTAGE_THRESHOLD)
 			}
 		case <-turnOffChannel:
 			// turn off server

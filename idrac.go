@@ -62,9 +62,9 @@ func (c *IDRACClient) doRequest(request *http.Request) (map[string]interface{}, 
 }
 
 func (c *IDRACClient) fetch(path string) (map[string]interface{}, error) {
-	if body, exists := c.cache.Get(path); exists {
-		return body.(map[string]interface{}), nil
-	}
+	// if body, exists := c.cache.Get(path); exists {
+	// 	return body.(map[string]interface{}), nil
+	// }
 	url := fmt.Sprintf("https://%s%s", c.authContext.Host, path)
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -74,7 +74,7 @@ func (c *IDRACClient) fetch(path string) (map[string]interface{}, error) {
 	if err != nil {
 		return map[string]interface{}{}, errors.Wrapf(err, "failed to fetch path %s", path)
 	}
-	c.cache.Put(path, response)
+	// c.cache.Put(path, response)
 	return response, nil
 }
 
@@ -108,6 +108,9 @@ func (c *IDRACClient) AmperageReading() (float64, error) {
 	body, err := c.fetch(amperatePath)
 	if err != nil {
 		return 0, errors.Wrap(err, "failed to fetch amperage from idrac")
+	}
+	if body["LineInputVoltage"] == nil {
+		return 0, fmt.Errorf("failed to convert input voltage because it is nil. full response: %+v", body)
 	}
 	inputVoltage := body["LineInputVoltage"].(float64)
 	return inputVoltage, nil
