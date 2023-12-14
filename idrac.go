@@ -120,7 +120,6 @@ func (c *IDRACClient) TurnOff() (map[string]interface{}, error) {
 	const managePowerPath = "/redfish/v1/Systems/System.Embedded.1/Actions/ComputerSystem.Reset"
 	glog.Warning("powering off server")
 	data := []byte("{\"Action\": \"Reset\", \"ResetType\": \"GracefulShutdown\"}")
-	// return map[string]interface{}{}, nil // todo remove
 	response, err := c.post(managePowerPath, data)
 	if err != nil {
 		return map[string]interface{}{}, errors.Wrap(err, "failed to post turn off command")

@@ -63,7 +63,6 @@ func run() error {
 	if currentState.On && currentState.Voltage < NO_VOLTAGE_THRESHOLD {
 		// start timer and wait for voltage to come back..
 		// perhaps wait until UPS is fully charged? (some hardcoded time)
-		glog.Warningf("low voltage detected - %f! Waiting some time before turning off server", currentState.Voltage)
 		err = handlePowerOnNoVoltage(savedState, idracClient)
 		if err != nil {
 			return errors.Wrap(err, "error handling no power while server is on")
@@ -86,18 +85,18 @@ func run() error {
 
 /* Handle case where power was lost while server is on. */
 func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) error {
-	turnOffThreshdold := time.Minute * 20 // 20 minutes
-	timeSinceLastCheck := time.Now().Sub(currentState.LastUpdate)
-	turnOffChannel := time.After(time.Duration(turnOffThreshdold.Nanoseconds() - timeSinceLastCheck.Nanoseconds()))
-	pollInterval := time.Minute * 200
+	turnOffThreshdold := time.Minute*20 - time.Now().Sub(currentState.LastUpdate) // 20 minutes - time since last update
+	glog.Warningf("low voltage detected - %f! Waiting %f minutes before turning off server", currentState.Voltage, turnOffThreshdold.Minutes())
+	turnOffChannel := time.After(turnOffThreshdold)
+	pollInterval := time.Minute * 1
 
 	for {
-		glog.Infof("waiting %f seconds before rechecking system state...", pollInterval.Seconds())
+		glog.Infof("rechecking system state in %f seconds...", pollInterval.Seconds())
 		select {
 		case <-time.After(pollInterval):
 			glog.Info("rechecking system state")
 			// query again
-			// if amp restored, break
+			// if voltage restored, break
 			voltage, err := idracClient.AmperageReading()
 			if err != nil {
 				glog.Error("failed to fetch voltage reading: " + err.Error())
@@ -106,18 +105,19 @@ func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) e
 			}
 			if voltage > NO_VOLTAGE_THRESHOLD {
 				glog.Infof("power is restored, current reading: %f", voltage)
-				break
+				return nil
 			} else {
 				glog.Infof("voltage %f is still below threshold %d", voltage, NO_VOLTAGE_THRESHOLD)
 			}
 		case <-turnOffChannel:
 			// turn off server
+			glog.Warningf("timeout of %f seconds elapsed. powering off server", turnOffThreshdold.Seconds())
 			response, err := idracClient.TurnOff()
 			if err != nil {
 				return errors.Wrap(err, "failed to turn off server")
 			}
-			glog.Infof("received response from tuning on server: %+v", response)
-			break
+			glog.Infof("received response from tuning off server: %+v", response)
+			return nil
 		}
 	}
 }
