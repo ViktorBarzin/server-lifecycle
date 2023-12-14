@@ -25,14 +25,12 @@ func main() {
 }
 
 func run() error {
-	var statusFile string
 	var runLockFile string
 	var idracHost string
 	var idracUsername string
 	var idracPassword string
 
 	flag.StringVar(&idracHost, "host", "idrac", "Idrac host")
-	flag.StringVar(&statusFile, "status-file", "/tmp/server-lifecycle-status.json", "Status file")
 	flag.StringVar(&idracUsername, "user", "root", "Idrac user")
 	flag.StringVar(&idracPassword, "password", "calvin", "Idrac password")
 	flag.StringVar(&runLockFile, "run-lock", "/tmp/server-lifecycle.lock", "Run lock to ensure at most 1 instance of the script is running")
@@ -54,31 +52,11 @@ func run() error {
 	authContext := AuthContext{Host: idracHost, Username: idracUsername, Password: idracPassword}
 	idracClient := IDRACClient{authContext: authContext, cache: NewLRUCache(20)}
 
-	err = initStateFile(statusFile)
-	if err != nil {
-		return errors.Wrap(err, "failed to init state file")
-	}
-	// savedState, err := readState(statusFile)
-	// if err != nil {
-	// 	return errors.Wrap(err, "error reading current state")
-	// }
-
 	// Fetch current state and save to disk
 	currentState, err := refreshState(idracClient)
 	if err != nil {
 		return errors.Wrap(err, "failed to fetch current state")
 	}
-	defer func() {
-		glog.Info("refreshing state after script has run to saved new state")
-		sleep := time.Duration(30 * time.Second)
-		glog.Infof("sleeping %f seconds to ensure all changes have been propagated", sleep.Seconds())
-		time.Sleep(sleep)
-		// refresh state at exit and write state after script has run
-		currentState, err := refreshState(idracClient)
-		if err == nil {
-			updateStateFile(statusFile, currentState)
-		}
-	}()
 
 	if currentState.On && currentState.Voltage > NO_VOLTAGE_THRESHOLD {
 		// server is on and there is power - leave
