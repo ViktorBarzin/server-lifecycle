@@ -72,6 +72,7 @@ func run() error {
 		glog.Info("refreshing state after script has run to saved new state")
 		sleep := time.Duration(60 * time.Second)
 		glog.Infof("sleeping %f seconds to ensure all changes have been propagated", sleep.Seconds())
+		time.Sleep(sleep * time.Second)
 		// refresh state at exit and write state after script has run
 		currentState, err := refreshState(idracClient)
 		if err == nil {
@@ -109,7 +110,8 @@ func run() error {
 
 /* Handle case where power was lost while server is on. */
 func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) error {
-	turnOffThreshdold := time.Minute*20 - time.Now().Sub(currentState.LastUpdate) // 20 minutes - time since last update
+	// turnOffThreshdold := time.Minute*20 - time.Now().Sub(currentState.LastUpdate) // 20 minutes - time since last update
+	turnOffThreshdold := time.Second*5 - time.Now().Sub(currentState.LastUpdate) // DEBUG
 	glog.Warningf("low voltage detected - %f! Waiting %f minutes before turning off server", currentState.Voltage, turnOffThreshdold.Minutes())
 	turnOffChannel := time.After(turnOffThreshdold)
 	pollInterval := time.Minute * 1
