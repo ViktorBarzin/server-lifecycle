@@ -58,17 +58,26 @@ func run() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to init state file")
 	}
-	savedState, err := readState(statusFile)
-	if err != nil {
-		return errors.Wrap(err, "error reading current state")
-	}
+	// savedState, err := readState(statusFile)
+	// if err != nil {
+	// 	return errors.Wrap(err, "error reading current state")
+	// }
 
 	// Fetch current state and save to disk
 	currentState, err := refreshState(idracClient)
 	if err != nil {
 		return errors.Wrap(err, "failed to fetch current state")
 	}
-	defer updateStateFile(statusFile, currentState)
+	defer func() {
+		glog.Info("refreshing state after script has run to saved new state")
+		sleep := time.Duration(60 * time.Second)
+		glog.Info("sleeping %f seconds to ensure all changes have been propagated", sleep.Seconds())
+		// refresh state at exit and write state after script has run
+		currentState, err := refreshState(idracClient)
+		if err == nil {
+			updateStateFile(statusFile, currentState)
+		}
+	}()
 
 	if currentState.On && currentState.Voltage > NO_VOLTAGE_THRESHOLD {
 		// server is on and there is power - leave
@@ -78,7 +87,7 @@ func run() error {
 	if currentState.On && currentState.Voltage < NO_VOLTAGE_THRESHOLD {
 		// start timer and wait for voltage to come back..
 		// perhaps wait until UPS is fully charged? (some hardcoded time)
-		err = handlePowerOnNoVoltage(savedState, idracClient)
+		err = handlePowerOnNoVoltage(currentState, idracClient)
 		if err != nil {
 			return errors.Wrap(err, "error handling no power while server is on")
 		}
