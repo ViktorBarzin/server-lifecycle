@@ -71,7 +71,7 @@ func run() error {
 	defer func() {
 		glog.Info("refreshing state after script has run to saved new state")
 		sleep := time.Duration(60 * time.Second)
-		glog.Info("sleeping %f seconds to ensure all changes have been propagated", sleep.Seconds())
+		glog.Infof("sleeping %f seconds to ensure all changes have been propagated", sleep.Seconds())
 		// refresh state at exit and write state after script has run
 		currentState, err := refreshState(idracClient)
 		if err == nil {
