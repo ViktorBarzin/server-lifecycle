@@ -16,8 +16,6 @@ type AuthContext struct {
 	Password string
 }
 
-const NO_VOLTAGE_THRESHOLD = 100 // Below this threshold, assume as there is no voltage
-
 func main() {
 	if err := run(); err != nil {
 		glog.Fatal("run failed: " + err.Error())
@@ -58,12 +56,12 @@ func run() error {
 		return errors.Wrap(err, "failed to fetch current state")
 	}
 
-	if currentState.On && currentState.Voltage > NO_VOLTAGE_THRESHOLD {
+	if currentState.On && currentState.HasPowerSupply {
 		// server is on and there is power - leave
 		glog.Info("server is on and there is power")
 		return nil
 	}
-	if currentState.On && currentState.Voltage < NO_VOLTAGE_THRESHOLD {
+	if currentState.On && !currentState.HasPowerSupply {
 		// start timer and wait for voltage to come back..
 		// perhaps wait until UPS is fully charged? (some hardcoded time)
 		err = handlePowerOnNoVoltage(currentState, idracClient)
@@ -72,25 +70,25 @@ func run() error {
 		}
 		return nil
 	}
-	if !currentState.On && currentState.Voltage < NO_VOLTAGE_THRESHOLD {
+	if !currentState.On && !currentState.HasPowerSupply {
 		// power off but still no power, so sleep
 		glog.Info("server is off but there is still no power so not turning on")
 		return nil
 	}
-	if !currentState.On && currentState.Voltage > NO_VOLTAGE_THRESHOLD {
+	if !currentState.On && currentState.HasPowerSupply {
 		// turn on, but perhaps check that UPS is fully charged
 		glog.Info("voltage restored! turning on server")
 		handlePowerOffWithVoltage(idracClient)
 		return nil
 	}
-	return fmt.Errorf("unexpected combination of server state: %t, voltage: %f", currentState.On, currentState.Voltage)
+	return fmt.Errorf("unexpected combination of server state: %t, has power supply: %f", currentState.On, currentState.HasPowerSupply)
 }
 
 /* Handle case where power was lost while server is on. */
 func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) error {
 	// turnOffThreshdold := time.Minute*20 - time.Now().Sub(currentState.LastUpdate) // 20 minutes - time since last update
 	turnOffThreshdold := time.Second*5 - time.Now().Sub(currentState.LastUpdate) // DEBUG
-	glog.Warningf("low voltage detected - %f! Waiting %f minutes before turning off server", currentState.Voltage, turnOffThreshdold.Minutes())
+	glog.Warningf("no power detected! Waiting %f minutes before turning off server", turnOffThreshdold.Minutes())
 	turnOffChannel := time.After(turnOffThreshdold)
 	pollInterval := time.Minute * 1
 
@@ -106,11 +104,11 @@ func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) e
 				glog.Error("failed to refetch current state: " + err.Error())
 				continue
 			}
-			if currentState.Voltage > NO_VOLTAGE_THRESHOLD {
-				glog.Infof("power is restored, current reading: %f", currentState.Voltage)
+			if currentState.HasPowerSupply {
+				glog.Info("power is restored")
 				return nil
 			} else {
-				glog.Infof("voltage %f is still below threshold %d", currentState.Voltage, NO_VOLTAGE_THRESHOLD)
+				glog.Info("power is still off")
 			}
 		case <-turnOffChannel:
 			// turn off server

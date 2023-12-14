@@ -8,14 +8,14 @@ import (
 )
 
 type ServerState struct {
-	On         bool      `json:"on"`
-	Voltage    float64   `json:"voltage"`
-	LastUpdate time.Time `json:"lastUpdate"`
+	On             bool      `json:"on"`
+	HasPowerSupply bool      `json:"hasPowerSupply"`
+	LastUpdate     time.Time `json:"lastUpdate"`
 }
 
 func refreshState(idracClient IDRACClient) (ServerState, error) {
 	// return ServerState{On: true, Voltage: 0, LastUpdate: time.Now()}, nil // mock
-	voltage, err := idracClient.AmperageReading()
+	hasPowerSupply, err := idracClient.HasPowerSupply()
 	if err != nil {
 		return ServerState{}, errors.Wrap(err, "failed to fetch amperage reading")
 	}
@@ -23,5 +23,5 @@ func refreshState(idracClient IDRACClient) (ServerState, error) {
 	if err != nil {
 		return ServerState{}, errors.Wrap(err, "failed to fetch voltage reading")
 	}
-	return ServerState{On: isPoweredOn, Voltage: voltage, LastUpdate: time.Now()}, nil
+	return ServerState{On: isPoweredOn, HasPowerSupply: hasPowerSupply, LastUpdate: time.Now()}, nil
 }
