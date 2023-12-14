@@ -101,17 +101,16 @@ func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) e
 			glog.Info("rechecking system state")
 			// query again
 			// if voltage restored, break
-			voltage, err := idracClient.AmperageReading()
+			currentState, err := refreshState(idracClient)
 			if err != nil {
-				glog.Error("failed to fetch voltage reading: " + err.Error())
-				// return errors.Wrap(err, "failed to fetch amperage reading") // should we return ot keep trying?
+				glog.Error("failed to refetch current state: " + err.Error())
 				continue
 			}
-			if voltage > NO_VOLTAGE_THRESHOLD {
-				glog.Infof("power is restored, current reading: %f", voltage)
+			if currentState.Voltage > NO_VOLTAGE_THRESHOLD {
+				glog.Infof("power is restored, current reading: %f", currentState.Voltage)
 				return nil
 			} else {
-				glog.Infof("voltage %f is still below threshold %d", voltage, NO_VOLTAGE_THRESHOLD)
+				glog.Infof("voltage %f is still below threshold %d", currentState.Voltage, NO_VOLTAGE_THRESHOLD)
 			}
 		case <-turnOffChannel:
 			// turn off server
