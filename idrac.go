@@ -32,6 +32,7 @@ func (c *IDRACClient) doRequest(request *http.Request) (map[string]interface{}, 
 
 	// Set the Authorization header
 	request.Header.Set("Authorization", authHeader)
+	request.Header.Set("Content-type", "application/json")
 
 	// Send the HTTP request
 	response, err := client.Do(request)
@@ -40,15 +41,15 @@ func (c *IDRACClient) doRequest(request *http.Request) (map[string]interface{}, 
 	}
 	defer response.Body.Close()
 
-	// Check if the response status code is OK (200)
-	if response.StatusCode != http.StatusOK {
-		return map[string]interface{}{}, errors.Wrap(err, "request failed with status")
-	}
-
 	// Read the response body
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return map[string]interface{}{}, errors.Wrap(err, "error reading response body")
+	}
+
+	// Check if the response status code is OK (200)
+	if response.StatusCode != http.StatusOK {
+		return map[string]interface{}{}, fmt.Errorf("request failed with status %d. response: %s", response.StatusCode, body)
 	}
 
 	// Print the response body as a string
