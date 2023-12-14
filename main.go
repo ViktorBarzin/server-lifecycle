@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/golang/glog"
@@ -25,6 +26,7 @@ func main() {
 
 func run() error {
 	var statusFile string
+	var runLockFile string
 	var idracHost string
 	var idracUsername string
 	var idracPassword string
@@ -33,13 +35,26 @@ func run() error {
 	flag.StringVar(&statusFile, "status-file", "/tmp/server-lifecycle-status.json", "Status file")
 	flag.StringVar(&idracUsername, "user", "root", "Idrac user")
 	flag.StringVar(&idracPassword, "password", "calvin", "Idrac password")
-
+	flag.StringVar(&runLockFile, "run-lock", "/tmp/server-lifecycle.lock", "Run lock to ensure at most 1 instance of the script is running")
 	flag.Parse()
+
+	if _, err := os.Stat(runLockFile); err == nil {
+		glog.Warningf("could not obtain lock file %s. perhaps another instance of this script is running. please wait until it completes or manually remove the lock file", runLockFile)
+		return nil
+	} else {
+		glog.Info("no other running isntance found, starting lifecycle checks")
+	}
+	_, err := os.Create(runLockFile)
+	if err != nil {
+		return errors.Wrap(err, "failed to create lock file")
+	}
+	defer os.Remove(runLockFile)
+
 	defer glog.Flush()
 	authContext := AuthContext{Host: idracHost, Username: idracUsername, Password: idracPassword}
 	idracClient := IDRACClient{authContext: authContext, cache: NewLRUCache(20)}
 
-	err := initStateFile(statusFile)
+	err = initStateFile(statusFile)
 	if err != nil {
 		return errors.Wrap(err, "failed to init state file")
 	}
