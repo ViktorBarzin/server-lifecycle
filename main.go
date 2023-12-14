@@ -70,7 +70,7 @@ func run() error {
 	}
 	defer func() {
 		glog.Info("refreshing state after script has run to saved new state")
-		sleep := time.Duration(60 * time.Second)
+		sleep := time.Duration(30 * time.Second)
 		glog.Infof("sleeping %f seconds to ensure all changes have been propagated", sleep.Seconds())
 		time.Sleep(sleep * time.Second)
 		// refresh state at exit and write state after script has run
