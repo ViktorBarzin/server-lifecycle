@@ -51,7 +51,7 @@ func initStateFile(path string) error {
 		return err
 	}
 	defaultStatus := ServerState{LastUpdate: time.Now()}
-	glog.Infof("Writing status: %+v", defaultStatus)
+	glog.Infof("initializing status: %+v", defaultStatus)
 	return nil
 }
 
