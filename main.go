@@ -28,12 +28,14 @@ func run() error {
 	var idracHost string
 	var idracUsername string
 	var idracPassword string
+	var turnOffThreshdoldMinutes int
 
 	flag.StringVar(&idracHost, "host", "idrac", "Idrac host")
 	flag.StringVar(&statusFile, "status-file", "/tmp/server-lifecycle-status.json", "Status file")
 	flag.StringVar(&idracUsername, "user", "root", "Idrac user")
 	flag.StringVar(&idracPassword, "password", "calvin", "Idrac password")
 	flag.StringVar(&runLockFile, "run-lock", "/tmp/server-lifecycle.lock", "Run lock to ensure at most 1 instance of the script is running")
+	flag.IntVar(&turnOffThreshdoldMinutes, "turnoff-threshold", 15, "Minutes to wait before turning off server. Time since last update is taken into account.")
 	flag.Parse()
 
 	if _, err := os.Stat(runLockFile); err == nil {
@@ -79,7 +81,8 @@ func run() error {
 	if currentState.On && !currentState.HasPowerSupply {
 		// start timer and wait for voltage to come back..
 		// perhaps wait until UPS is fully charged? (some hardcoded time)
-		err = handlePowerOnNoVoltage(currentState, idracClient)
+		turnOffThreshold := time.Minute*time.Duration(turnOffThreshdoldMinutes) - time.Now().Sub(currentState.LastUpdate)
+		err = handlePowerOnNoVoltage(currentState, idracClient, turnOffThreshold)
 		if err != nil {
 			return errors.Wrap(err, "error handling no power while server is on")
 		}
@@ -103,11 +106,9 @@ func run() error {
 }
 
 /* Handle case where power was lost while server is on. */
-func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) error {
-	turnOffThreshdold := time.Minute*15 - time.Now().Sub(currentState.LastUpdate) // 20 minutes - time since last update
-	// turnOffThreshdold := time.Second*5 - time.Now().Sub(currentState.LastUpdate) // DEBUG
-	glog.Warningf("no power detected! Waiting %f minutes before turning off server", turnOffThreshdold.Minutes())
-	turnOffChannel := time.After(turnOffThreshdold)
+func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient, turnOffThreshold time.Duration) error {
+	glog.Warningf("no power detected! Waiting %f minutes before turning off server", turnOffThreshold.Minutes())
+	turnOffChannel := time.After(turnOffThreshold)
 	pollInterval := time.Minute * 1
 
 	for {
@@ -130,7 +131,7 @@ func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) e
 			}
 		case <-turnOffChannel:
 			// turn off server
-			glog.Warningf("timeout of %f seconds elapsed. powering off server", turnOffThreshdold.Seconds())
+			glog.Warningf("timeout of %f seconds elapsed. powering off server", turnOffThreshold.Seconds())
 			response, err := idracClient.TurnOff()
 			if err != nil {
 				return errors.Wrap(err, "failed to turn off server")
