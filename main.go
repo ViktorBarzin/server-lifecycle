@@ -23,12 +23,14 @@ func main() {
 }
 
 func run() error {
+	var statusFile string
 	var runLockFile string
 	var idracHost string
 	var idracUsername string
 	var idracPassword string
 
 	flag.StringVar(&idracHost, "host", "idrac", "Idrac host")
+	flag.StringVar(&statusFile, "status-file", "/tmp/server-lifecycle-status.json", "Status file")
 	flag.StringVar(&idracUsername, "user", "root", "Idrac user")
 	flag.StringVar(&idracPassword, "password", "calvin", "Idrac password")
 	flag.StringVar(&runLockFile, "run-lock", "/tmp/server-lifecycle.lock", "Run lock to ensure at most 1 instance of the script is running")
@@ -40,7 +42,18 @@ func run() error {
 	} else {
 		glog.Info("no other running isntance found, starting lifecycle checks")
 	}
-	_, err := os.Create(runLockFile)
+	err := initStateFile(statusFile)
+	if err != nil {
+		return errors.Wrap(err, "failed to init state file")
+	}
+	// fetch laste updated time
+	savedState, err := readState(statusFile)
+	if err != nil {
+		return errors.Wrap(err, "error reading current state")
+	}
+	lastUpdate := savedState.LastUpdate
+
+	_, err = os.Create(runLockFile)
 	if err != nil {
 		return errors.Wrap(err, "failed to create lock file")
 	}
@@ -52,6 +65,7 @@ func run() error {
 
 	// Fetch current state and save to disk
 	currentState, err := refreshState(idracClient)
+	currentState.LastUpdate = lastUpdate // use last update
 	if err != nil {
 		return errors.Wrap(err, "failed to fetch current state")
 	}
@@ -59,6 +73,7 @@ func run() error {
 	if currentState.On && currentState.HasPowerSupply {
 		// server is on and there is power - leave
 		glog.Info("server is on and there is power")
+		updateStateFile(statusFile, currentState)
 		return nil
 	}
 	if currentState.On && !currentState.HasPowerSupply {
@@ -68,26 +83,29 @@ func run() error {
 		if err != nil {
 			return errors.Wrap(err, "error handling no power while server is on")
 		}
+		refreshAndSaveState(idracClient, statusFile)
 		return nil
 	}
 	if !currentState.On && !currentState.HasPowerSupply {
 		// power off but still no power, so sleep
 		glog.Info("server is off but there is still no power so not turning on")
+		updateStateFile(statusFile, currentState)
 		return nil
 	}
 	if !currentState.On && currentState.HasPowerSupply {
 		// turn on, but perhaps check that UPS is fully charged
 		glog.Info("voltage restored! turning on server")
 		handlePowerOffWithVoltage(idracClient)
+		refreshAndSaveState(idracClient, statusFile)
 		return nil
 	}
-	return fmt.Errorf("unexpected combination of server state: %t, has power supply: %f", currentState.On, currentState.HasPowerSupply)
+	return fmt.Errorf("unexpected combination of server state: %t, has power supply: %t", currentState.On, currentState.HasPowerSupply)
 }
 
 /* Handle case where power was lost while server is on. */
 func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient) error {
-	// turnOffThreshdold := time.Minute*20 - time.Now().Sub(currentState.LastUpdate) // 20 minutes - time since last update
-	turnOffThreshdold := time.Second*5 - time.Now().Sub(currentState.LastUpdate) // DEBUG
+	turnOffThreshdold := time.Minute*15 - time.Now().Sub(currentState.LastUpdate) // 20 minutes - time since last update
+	// turnOffThreshdold := time.Second*5 - time.Now().Sub(currentState.LastUpdate) // DEBUG
 	glog.Warningf("no power detected! Waiting %f minutes before turning off server", turnOffThreshdold.Minutes())
 	turnOffChannel := time.After(turnOffThreshdold)
 	pollInterval := time.Minute * 1
@@ -132,4 +150,17 @@ func handlePowerOffWithVoltage(idracClient IDRACClient) error {
 	}
 	glog.Infof("received response form tuning on server: %+v", response)
 	return nil
+}
+
+// Useful to refresh state on exit
+func refreshAndSaveState(idracClient IDRACClient, statusFile string) {
+	glog.Info("refreshing state after script has run to saved new state")
+	sleep := time.Duration(15 * time.Second)
+	glog.Infof("sleeping %f seconds to ensure all changes have been propagated", sleep.Seconds())
+	time.Sleep(sleep)
+	// refresh state at exit and write state after script has run
+	currentState, err := refreshState(idracClient)
+	if err == nil {
+		updateStateFile(statusFile, currentState)
+	}
 }
