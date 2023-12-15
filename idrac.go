@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
@@ -104,36 +103,27 @@ func (c *IDRACClient) IsPoweredOn() (bool, error) {
 	return powerState == "On", nil
 }
 
-// DEPRECATED: only shows current usage so i.e is equivlent to server being on
-// func (c *IDRACClient) AmperageReading() (float64, error) {
-// 	const amperatePath = "/redfish/v1/Chassis/System.Embedded.1/Power/PowerSupplies/PSU.Slot.2"
-// 	glog.Info("fetching voltage state")
-// 	body, err := c.fetch(amperatePath)
-// 	if err != nil {
-// 		return 0, errors.Wrap(err, "failed to fetch amperage from idrac")
-// 	}
-// 	if body["LineInputVoltage"] == nil {
-// 		return 0, nil
-// 	}
-// 	inputVoltage := body["LineInputVoltage"].(float64)
-// 	return inputVoltage, nil
-// }
+func (c *IDRACClient) VoltageReading() (float64, error) {
+	// PSU 2 is currently behind the UPS
+	const amperatePath = "/redfish/v1/Chassis/System.Embedded.1/Power/PowerSupplies/PSU.Slot.2"
+	glog.Info("fetching voltage state")
+	body, err := c.fetch(amperatePath)
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to fetch amperage from idrac")
+	}
+	if body["LineInputVoltage"] == nil {
+		return 0, nil
+	}
+	inputVoltage := body["LineInputVoltage"].(float64)
+	return inputVoltage, nil
+}
 
 func (c *IDRACClient) HasPowerSupply() (bool, error) {
-	// redfish only exports current usage i.e LineInputVoltage
-	// but if server is off - it is 0. it does not show the status of the UPS
-	// so as a workaround, check if there's internet connectivity:
-	// if there's internet -> there is power
-	client := http.Client{
-		Timeout: 5 * time.Second, // Set a timeout for the HTTP request
-	}
-	resp, err := client.Get("https://www.google.com")
+	voltage, err := c.VoltageReading()
 	if err != nil {
-		return false, errors.Wrapf(err, "failed to check power by checking internet connectivity")
+		return false, errors.Wrap(err, "failed getting voltage reading")
 	}
-	defer resp.Body.Close()
-
-	return resp.StatusCode == http.StatusOK, nil
+	return voltage != 0, nil
 }
 
 func (c *IDRACClient) TurnOff() (map[string]interface{}, error) {
