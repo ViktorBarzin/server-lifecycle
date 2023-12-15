@@ -40,7 +40,7 @@ func run() error {
 		glog.Warningf("could not obtain lock file %s. perhaps another instance of this script is running. please wait until it completes or manually remove the lock file", runLockFile)
 		return nil
 	} else {
-		glog.Info("no other running isntance found, starting lifecycle checks")
+		glog.Info("no other running instance found, starting lifecycle checks")
 	}
 	err := initStateFile(statusFile)
 	if err != nil {
