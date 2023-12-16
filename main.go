@@ -29,6 +29,7 @@ func run() error {
 	var idracUsername string
 	var idracPassword string
 	var turnOffThreshdoldMinutes int
+	var pollIntervalSeconds int
 
 	flag.StringVar(&idracHost, "host", "idrac", "Idrac host")
 	flag.StringVar(&statusFile, "status-file", "/tmp/server-lifecycle-status.json", "Status file")
@@ -36,6 +37,7 @@ func run() error {
 	flag.StringVar(&idracPassword, "password", "calvin", "Idrac password")
 	flag.StringVar(&runLockFile, "run-lock", "/tmp/server-lifecycle.lock", "Run lock to ensure at most 1 instance of the script is running")
 	flag.IntVar(&turnOffThreshdoldMinutes, "turnoff-threshold", 15, "Minutes to wait before turning off server. Time since last update is taken into account.")
+	flag.IntVar(&pollIntervalSeconds, "poll-interval-seconds", 30, "Seconds to wait between polling for power status when power goes away.")
 	flag.Parse()
 
 	if _, err := os.Stat(runLockFile); err == nil {
@@ -83,7 +85,8 @@ func run() error {
 		// start timer and wait for voltage to come back..
 		// perhaps wait until UPS is fully charged? (some hardcoded time)
 		turnOffThreshold := time.Minute*time.Duration(turnOffThreshdoldMinutes) - time.Now().Sub(currentState.LastUpdate)
-		err = handlePowerOnNoVoltage(currentState, idracClient, turnOffThreshold)
+		pollInterval := time.Second * time.Duration(pollIntervalSeconds)
+		err = handlePowerOnNoVoltage(currentState, idracClient, turnOffThreshold, pollInterval)
 		if err != nil {
 			return errors.Wrap(err, "error handling no power while server is on")
 		}
@@ -108,10 +111,9 @@ func run() error {
 }
 
 /* Handle case where power was lost while server is on. */
-func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient, turnOffThreshold time.Duration) error {
+func handlePowerOnNoVoltage(currentState ServerState, idracClient IDRACClient, turnOffThreshold time.Duration, pollInterval time.Duration) error {
 	glog.Warningf("no power detected! Waiting %f minutes before turning off server", turnOffThreshold.Minutes())
 	turnOffChannel := time.After(turnOffThreshold)
-	pollInterval := time.Minute * 1
 
 	for {
 		glog.Infof("rechecking system state in %f seconds...", pollInterval.Seconds())
