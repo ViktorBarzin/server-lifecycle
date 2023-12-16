@@ -75,6 +75,7 @@ func run() error {
 	if currentState.On && currentState.HasPowerSupply {
 		// server is on and there is power - leave
 		glog.Info("server is on and there is power")
+		currentState.LastUpdate = time.Now()
 		updateStateFile(statusFile, currentState)
 		return nil
 	}
@@ -92,6 +93,7 @@ func run() error {
 	if !currentState.On && !currentState.HasPowerSupply {
 		// power off but still no power, so sleep
 		glog.Info("server is off but there is still no power so not turning on")
+		currentState.LastUpdate = time.Now()
 		updateStateFile(statusFile, currentState)
 		return nil
 	}
